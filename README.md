@@ -21,13 +21,20 @@ import { DataStorage, Compressor, ObjectNotation } from 'DataStorage';
 DataStorage will be created for entities (including players), world and items by default, so there is no need to construct a `new DataStorage()` manually.
 
 ```js
+import { system, world } from '@minecraft/server';
 import 'DataStorage';
 
 world.beforeEvents.playerLeave.subscribe(evt => {
   const { player } = evt;
 
-  player.dataStorage.save(); // save all the data from the map
+  player.dataStorage.save(true); // saves all data from the map synchronously
 });
+
+system.runInterval(() => {
+  for (const player of world.getAllPlayers()) {
+    player.dataStorage.save(); // saves all data from the map asynchronously
+  }
+}, 20 * 30);
 
 world.beforeEvents.itemUse.subscribe(evt => {
   const { source, itemStack } = evt;
