@@ -1,6 +1,6 @@
 /**
  * DataStorage - Library for easy management of dynamic properties
- * Version: 1.0
+ * Version: 1.1
  * Author: Raphyah
  * License: GNU General Public License version 3
  * GitHub: https://www.github.com/Raphyah
@@ -12,7 +12,7 @@
  * Examples can be found on my GitHub.
  * 
  * Release date: January 25, 2024
- * Last updated: January 25, 2024
+ * Last updated: January 27, 2024
  */
 'use strict';
 
@@ -29,7 +29,34 @@
  * - used to append data directly to it's prototype
  * - used to check if a certain value passed is instance of it
  */
-import { world, World, Entity, ItemStack } from '@minecraft/server';
+import { system, world, Entity, ItemStack } from '@minecraft/server';
+
+const smoothLoop = (callback, map) => new Promise(resolve => {
+  let iterable = map.entries();
+  
+  function runLoop() {
+    const response = [];
+    const pair = iterable.next().value;
+    if (pair) {
+      response.push(pair[1], pair[0]);
+    }
+    
+    let continueLoop;
+    if (response.length > 0) {
+      continueLoop = callback(...response);
+    } else {
+      continueLoop = false;
+    }
+    
+    if (continueLoop !== false) {
+      system.run(runLoop);
+    } else {
+      resolve();
+    }
+  }
+  
+  system.run(runLoop);
+});
 
 /**
  * Constructor used to define compressors
@@ -228,9 +255,6 @@ const DEFAULT_SAFE_LENGTH = 500;
  *   - Clones the value of a key
  */
 class CloneableMap extends Map {
-  constructor(...args) {
-    super(...args);
-  }
   /**
    * Deep clones a property
    * @param {*} key The key where the data is stored
@@ -271,6 +295,8 @@ class CloneableMap extends Map {
  *   - Get the total size in bytes of dynamic properties
  */
 export class DataStorage {
+  #saving = false;
+  #forcedSave = false;
   #target;
   #compressor;
   #objectNotation;
@@ -281,9 +307,6 @@ export class DataStorage {
    * @param {World|Entity|ItemStack} target The target where the properties should be modified
    */
   constructor(target) {
-    if (!target instanceof World || !target instanceof Entity || !target instanceof ItemStack) {
-      throw new TypeError(`DataStorage target should be of type World, Entity or ItemStack, but instead ${target.constructor.name} was found`);
-    }
     this.#target = target;
     this.compressor = Compressor.default;
     this.objectNotation = ObjectNotation.default;
@@ -360,17 +383,26 @@ export class DataStorage {
   }
   
   /**
-   * Save data from ClonableMap to dynamic properties
+   * Saves data from ClonableMap to dynamic properties
+   * @param {Boolean} force Forces the data to be saved synchronously, and ignores any non-forced save process already ongoing
    */
-  save() {
-    const keys = Object.keys(Object.fromEntries(this.data));
+  save(force = false) {
+    if (!force && this.#saving || this.#forcedSave) return;
     
-    for (const key of keys) {
-      const value = this.objectNotation.stringify(this.data.get(key));
-      
-      const data = this.compressor.compress(value);
-      
-      this.#saveRaw(key, data);
+    if (force) {
+      this.#forcedSave = true;
+      for (const [key, value] of this.data.entries()) {
+        const data = this.compressor.compress(this.objectNotation.stringify(value));
+        this.#saveRaw(key, data);
+      }
+      this.#forcedSave = false;
+    } else {
+      this.#saving = true;
+      smoothLoop((value, key) => {
+        if (this.#forcedSave) return false;
+        const data = this.compressor.compress(this.objectNotation.stringify(value));
+        this.#saveRaw(key, data);
+      }, this.data).finally(() => this.#saving = false);
     }
   }
   /**
