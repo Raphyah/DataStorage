@@ -1,6 +1,6 @@
 /**
  * DataStorage - Library for easy management of dynamic properties
- * Version: 1.1
+ * Version: 1.3
  * Author: Raphyah
  * License: GNU General Public License version 3
  * GitHub: https://www.github.com/Raphyah
@@ -41,14 +41,12 @@ const smoothLoop = (callback, map) => new Promise(resolve => {
   let lastReturned;
 
   function runLoop() {
-    if (lastReturned && lastReturned.constructor !== BreakLoop) {
-      const pair = iterable.next().value;
+    const PAIR = iterable.next().value;
 
-      if (pair) {
-        lastReturned = callback(...pair);
-      } else {
-        lastReturned = new BreakLoop('Iteration finished', 0);
-      }
+    if (PAIR) {
+      lastReturned = callback(PAIR[1], PAIR[0]);
+    } else {
+      lastReturned = new BreakLoop('Iteration finished', 0);
     }
 
     if (lastReturned && lastReturned.constructor !== BreakLoop) {
@@ -172,9 +170,9 @@ export class Compressor {
    * @returns {Compressor} The found compressor
    */
   static find(value = this.default) {
-    const compressor = value?.constructor === Compressor ? value : this.#list.find(x => new RegExp(value).test(x.name));
+    const COMPRESSOR = value?.constructor === Compressor ? value : this.#list.find(x => new RegExp(value).test(x.name));
 
-    return compressor;
+    return COMPRESSOR;
   }
 
   /**
@@ -267,9 +265,9 @@ export class NotationHandler {
   }
 
   static find(value = this.default) {
-    const notationHandler = value?.constructor === NotationHandler ? value : this.#list.find(x => value === x.name);
+    const NOTATION_HANDLER = value?.constructor === NotationHandler ? value : this.#list.find(x => value === x.name);
 
-    return notationHandler;
+    return NOTATION_HANDLER;
   }
 
   static #default;
@@ -312,13 +310,15 @@ const DEFAULT_SAFE_LENGTH = 500;
  */
 class CloneableMap extends Map {
   /**
-   * Deep clones a property
-   * @param {*} key The key where the data is stored
+   * Deep clones the value associated with the specified key in the map.
+   * @param {*} key - The key of the value to be cloned.
+   * @returns {*} - The cloned value, or undefined if the key does not exist in the map.
    */
   clone(key) {
-    try {
-      return JSON.parse(JSON.stringify( this.get(key) ));
-    } catch (err) { }
+    const VALUE = this.get(key);
+    if (VALUE) {
+      return JSON.parse(JSON.stringify( VALUE ));
+    }
   }
 }
 
@@ -362,7 +362,7 @@ export class DataStorage {
    */
   constructor(target) {
     if (!target.setDynamicProperty || !target.getDynamicProperty) {
-      throw new TypeError(`DataStorage's 'target' must have support for dynamic properties, but ${target.constructor.name} doesn't provide said support`);
+      throw new TypeError(`DataStorage's target must have support for dynamic properties, but ${target.constructor.name} doesn't provide said support`);
     }
     this.#target = target;
     this.compressor = Compressor.default;
@@ -386,11 +386,11 @@ export class DataStorage {
    * @param {Compressor|String} value The compressor to be used
    */
   set compressor(value) {
-    const compressor = Compressor.find(value);
-    if ( !compressor ) {
+    const COMPRESSOR = Compressor.find(value);
+    if ( !COMPRESSOR ) {
       throw new TypeError(`No valid compressor was provided to 'DataStorage.prototype.compressor'`);
     }
-    this.#compressor = compressor;
+    this.#compressor = COMPRESSOR;
   }
   /**
    * Get the current compressor in use
@@ -405,11 +405,11 @@ export class DataStorage {
    * @param {Object} value The object notation object
    */
   set notationHandler(value) {
-    const notationHandler = NotationHandler.find(value);
-    if ( !notationHandler ) {
+    const NOTATION_HANDLER = NotationHandler.find(value);
+    if ( !NOTATION_HANDLER ) {
       throw new TypeError(`No valid notation handler was provided to 'DataStorage.prototype.notationHandler(value)'`);
     }
-    this.#notationHandler = value;
+    this.#notationHandler = NOTATION_HANDLER;
   }
   /**
    * Get the current object notation in use
@@ -444,10 +444,10 @@ export class DataStorage {
     if (this.#synchronousSave) return;
 
     this.#synchronousSave = true;
-    for (const [key, value] of this.data.entries()) {
+    for (const [KEY, VALUE] of this.data.entries()) {
       try {
-        const data = this.compressor.compress(this.notationHandler.stringify(value));
-        this.#saveRaw(key, data);
+        const DATA = this.compressor.compress(this.notationHandler.stringify(VALUE));
+        this.#saveRaw(KEY, DATA);
       } catch (err) {
         console.error(err);
       }
@@ -462,8 +462,8 @@ export class DataStorage {
     this.#asynchronousSave = true;
     smoothLoop((value, key) => {
       if (this.#synchronousSave) return new BreakLoop('Synchronous save process started', 2);
-      const data = this.compressor.compress(this.notationHandler.stringify(value));
-      this.#saveRaw(key, data);
+      const DATA = this.compressor.compress(this.notationHandler.stringify(value));
+      this.#saveRaw(key, DATA);
     }, this.data)
       .catch(console.error)
       .finally(() => this.#asynchronousSave = false);
@@ -491,17 +491,17 @@ export class DataStorage {
    */
   load() {
     if (!this.#loaded) {
-      const keys = this.target.getDynamicPropertyIds();
+      const KEYS = this.target.getDynamicPropertyIds();
 
-      for (let index = 0; index < keys.length; index++) {
-        const key = keys[index];
-        const value = this.#loadRaw(key);
+      for (let index = 0; index < KEYS.length; index++) {
+        const KEY = KEYS[index];
+        const VALUE = this.#loadRaw(KEY);
         try {
-          const data = this.compressor.decompress(value);
+          const DATA = this.compressor.decompress(VALUE);
 
-          this.data.set(key, this.notationHandler.parse(data));
+          this.data.set(KEY, this.notationHandler.parse(DATA));
         } catch(error) {
-          console.error(error);
+          console.error(error.stack);
         }
       }
 
